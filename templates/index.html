@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Refinery Crude Oil Scheduling System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏭 Refinery Crude Oil Scheduling System</h1>
+            <p>Optimize crude oil inventory management and ensure continuous processing</p>
+            <div style="text-align: center; margin: 15px 0;">
+                <button onclick="scrollToSimulation()" style="background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">🎯 SIM 1</button>
+            </div>
+        </div>
+        
+        <div class="input-section">
+            <h2>⚙️ Refinery Configuration</h2>
+            <div class="input-row">
+                <label>Processing Rate:</label>
+                <input type="number" id="processingRate" value="50000" min="1000" step="1000" onchange="autoSaveInputs()">
+                <span>bbl/day</span>
+            </div>
+            <div class="input-row">
+                <label>Number of Crude Tanks:</label>
+                <input type="number" id="numTanks" value="12" min="1" max="50" onchange="updateTankCount(); autoSaveInputs()">
+                <button type="button" onclick="addOneTank()" style="margin-left: 5px; padding: 5px 10px;">+1</button>
+                <button type="button" onclick="removeOneTank()" style="margin-left: 5px; padding: 5px 10px;">-1</button>
+                <span id="tankCountDisplay">tanks (12 tanks total)</span>
+            </div>
+            <div class="input-row">
+                <label>Tank Capacity (each):</label>
+                <input type="number" id="tankCapacity" value="500000" min="100000" step="50000" onchange="populateTankLevels(); autoCalculatePumpingDays(); autoSaveInputs()">
+                <span>bbl (will auto-populate all tank levels)</span>
+            </div>
+            <div class="input-row">
+                <label>Pumping Rate (Buoy to Tank):</label>
+                <input type="number" id="pumpingRate" value="30000" min="100" step="100" onchange="autoCalculatePumpingDays(); autoSaveInputs()">
+                <span>bbl/hour</span>
+            </div>
+        </div>
+
+        <!-- NEW INVENTORY CONTROLS SECTION -->
+        <div class="input-section">
+            <h2>📊 INVENTORY RANGE CONTROLS</h2>
+            <p><em>Real-time inventory monitoring with MIN/MAX range validation</em></p>
+            
+            <div class="input-row">
+                <label>Minimum Inventory:</label>
+                <input type="number" id="minInventory" value="3000000" min="0" step="50000" on="validateInventoryRange(); autoSaveInputs()">
+                <span>bbl (excluding dead bottom)</span>
+            </div>
+            
+            <div class="input-row">
+                <label>Maximum Inventory:</label>
+                <input type="number" id="maxInventory" value="11000000" min="0" step="50000" oninput="validateInventoryRange(); autoSaveInputs()">
+                <span>bbl (excluding dead bottom)</span>
+            </div>
+            
+            <div class="input-row">
+                <div id="inventoryValidationMessage" style="display: none; padding: 10px; border-radius: 5px; margin-top: 10px;"></div>
+            </div>
+            
+            <p><em>Note: System will validate range feasibility before simulation and track real-time inventory during operations</em></p>
+        </div>
+
+        <!-- NEW CHARTERING RATES SECTION -->
+        <div class="input-section">
+            <h2>⚓ Available Cargo Types, Capacities & Chartering Rates</h2>
+            <p><em>Optimization will consider both capacity and chartering costs</em></p>
+            
+            <div class="input-row">
+                <label>VLCC Capacity:</label>
+                <input type="number" id="vlccCapacity" value="2000000" min="0" onchange="autoCalculatePumpingDays(); autoSaveInputs()">
+                <span>bbl (0 = not available)</span>
+            </div>
+            <div class="input-row">
+                <label>VLCC Chartering Rate:</label>
+                <input type="number" id="vlccRateDay" value="45000" min="0" step="1000" onchange="autoSaveInputs()">
+                <span>$/day</span>
+            </div>
+            <div class="input-row">
+                <label>VLCC Include Return Journey:</label>
+                <input type="checkbox" id="vlccIncludeReturn" checked onchange="autoSaveInputs()">
+                <span>Include return journey in charter cost</span>
+            </div>
+            
+            <div class="input-row">
+                <label>Suezmax Capacity:</label>
+                <input type="number" id="suezmaxCapacity" value="1000000" min="0" onchange="autoCalculatePumpingDays(); autoSaveInputs()">
+                <span>bbl (0 = not available)</span>
+            </div>
+            <div class="input-row">
+                <label>Suezmax Chartering Rate:</label>
+                <input type="number" id="suezmaxRateDay" value="35000" min="0" step="1000" onchange="autoSaveInputs()">
+                <span>$/day</span>
+            </div>
+            <div class="input-row">
+                <label>Suezmax Include Return Journey:</label>
+                <input type="checkbox" id="suezmaxIncludeReturn" checked onchange="autoSaveInputs()">
+                <span>Include return journey in charter cost</span>
+            </div>
+            
+            <div class="input-row">
+                <label>Aframax Capacity:</label>
+                <input type="number" id="aframaxCapacity" value="750000" min="0" onchange="autoCalculatePumpingDays(); autoSaveInputs()">
+                <span>bbl (0 = not available)</span>
+            </div>
+            <div class="input-row">
+                <label>Aframax Chartering Rate:</label>
+                <input type="number" id="aframaxRateDay" value="25000" min="0" step="1000" onchange="autoSaveInputs()">
+                <span>$/day</span>
+            </div>
+            <div class="input-row">
+                <label>Aframax Include Return Journey:</label>
+                <input type="checkbox" id="aframaxIncludeReturn" checked onchange="autoSaveInputs()">
+                <span>Include return journey in charter cost</span>
+            </div>
+            
+            <div class="input-row">
+                <label>Panamax Capacity:</label>
+                <input type="number" id="panamaxCapacity" value="600000" min="0" onchange="autoCalculatePumpingDays(); autoSaveInputs()">
+                <span>bbl (0 = not available)</span>
+            </div>
+            <div class="input-row">
+                <label>Panamax Chartering Rate:</label>
+                <input type="number" id="panamaxRateDay" value="18000" min="0" step="1000" onchange="autoSaveInputs()">
+                <span>$/day</span>
+            </div>
+            <div class="input-row">
+                <label>Panamax Include Return Journey:</label>
+                <input type="checkbox" id="panamaxIncludeReturn" checked onchange="autoSaveInputs()">
+                <span>Include return journey in charter cost</span>
+            </div>
+            
+            <div class="input-row">
+                <label>Handymax Capacity:</label>
+                <input type="number" id="handymaxCapacity" value="350000" min="0" onchange="autoCalculatePumpingDays(); autoSaveInputs()">
+                <span>bbl (0 = not available)</span>
+            </div>
+            <div class="input-row">
+                <label>Handymax Chartering Rate:</label>
+                <input type="number" id="handymaxRateDay" value="12000" min="0" step="1000" onchange="autoSaveInputs()">
+                <span>$/day</span>
+            </div>
+            <div class="input-row">
+                <label>Handymax Include Return Journey:</label>
+                <input type="checkbox" id="handymaxIncludeReturn" checked onchange="autoSaveInputs()">
+                <span>Include return journey in charter cost</span>
+            </div>
+            
+            <p><em>Priority: VLCC → Suezmax → Aframax → Panamax → Handymax (Set capacity to 0 to disable)</em></p>
+            <p><em>Note: Return journey inclusion is configurable per vessel type. Charter Period = Journey + Pre-Discharge + Pumping + Return (if checked)</em></p>
+        </div>
+
+        <!-- ENHANCED CARGO SCHEDULING SECTION -->
+        <div class="input-section">
+            <h2>🚢 Enhanced Cargo Scheduling</h2>
+            
+            <!-- Departure Selection -->
+            <div class="input-row">
+                <label>Cargo Departure:</label>
+                <div class="departure-selector">
+                    <select id="departureMode" onchange="toggleDepartureMode(); autoSaveInputs()">
+                        <option value="solver">Solver (Automatic)</option>
+                        <option value="manual">Manual Selection</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Manual Date/Time Input -->
+            <div id="manualDepartureSection" style="display: none;">
+                <div class="input-row">
+                    <label>Manual Departure Date & Time:</label>
+                    <input type="datetime-local" id="departureDateTimeManual" value="2025-08-15T08:00" onchange="autoSaveInputs()">
+                </div>
+            </div>
+
+            <!-- Solver Options & Result -->
+            <div id="solverDepartureSection">
+                <h3>🎯 Solver Configuration</h3>
+                <div class="input-row">
+                    <label>Solver Recommended Departure:</label>
+                    <input type="text" id="solverRecommendedDeparture" readonly placeholder="Run simulation to see solver result">
+                    <span>(calculated optimal departure date & time)</span>
+                </div>
+            </div>
+
+            <!-- Journey Time Components -->
+            <h3>⏱️ Journey Time Components</h3>
+            <div class="input-row">
+                <label>Pre-Journey Time:</label>
+                <input type="number" id="preJourneyDays" value="1" min="0" max="5" step="0.5" onchange="autoCalculateLeadTime(); autoSaveInputs()">
+                <span>days (port formalities, loading prep)</span>
+            </div>
+            <div class="input-row">
+                <label>Journey Time:</label>
+                <input type="number" id="journeyDays" value="10" min="1" max="30" onchange="autoCalculateLeadTime(); autoSaveInputs()">
+                <span>days (actual sailing time)</span>
+            </div>
+            <div class="input-row">
+                <label>Pre-Discharge:</label>
+                <input type="number" id="preDischargeDays" value="1" min="0" max="5" step="0.5" onchange="autoCalculateLeadTime(); autoSaveInputs()">
+                <span>days (berth waiting, customs)</span>
+            </div>
+
+            <!-- Discharge & Processing Components -->
+            <h3>🏭 Discharge & Processing</h3>
+            <div class="input-row">
+                <label>Pumping Hours:</label>
+                <input type="number" id="pumpingDaysDisplay" readonly>
+                <span>hours (auto-calculated from cargo size & pumping rate)</span>
+            </div>
+            <div class="input-row">
+                <label>Settling Days:</label>
+                <input type="number" id="settlingTime" value="2" min="0" max="7" onchange="autoCalculateLeadTime(); autoSaveInputs()">
+                <span>days (tank settling after filling)</span>
+            </div>
+            <div class="input-row">
+                <label>Lab Testing:</label>
+                <input type="number" id="labTestingDays" value="1" min="0" max="3" step="0.5" onchange="autoCalculateLeadTime(); autoSaveInputs()">
+                <span>days (quality testing time)</span>
+            </div>
+
+            <!-- Lead Time & Buffer -->
+            <h3>📊 Lead Time & Buffer</h3>
+            <div class="input-row">
+                <label>Lead Time:</label>
+                <input type="number" id="leadTimeDisplay" readonly>
+                <span>days (auto-calculated sum of journey components)</span>
+            </div>
+            <div class="input-row">
+                <label>Buffer Days:</label>
+                <input type="number" id="bufferDays" value="2" min="0" max="7" onchange="autoSaveInputs()">
+                <span>days (additional safety buffer)</span>
+            </div>
+            <p><em>Note: Buffer Stock for Continuous Operation will be calculated in Buffer Analysis section.</em></p>
+
+            
+        </div>
+
+        <div class="input-section">
+            <h2>🛢️ Tank Initial Status</h2>
+            <p><em>Tank Cycle: <span class="status-indicator status-ready">READY</span> → 
+                <span class="status-indicator status-feeding">FEEDING</span> → 
+                <span class="status-indicator status-empty">EMPTY (10,000-10,500 bbl)</span> → 
+                <span class="status-indicator status-filling">FILLING</span> → 
+                <span class="status-indicator status-filled">FILLED</span> → 
+                <span class="status-indicator status-suspended">SUSPENDED</span> → 
+                <span class="status-indicator status-settling">SETTLING (2 days)</span> → 
+                <span class="status-indicator status-lab-testing">LAB TESTING (1 day)</span> → 
+                <span class="status-indicator status-ready">READY</span></em></p>
+            
+            <!-- Default Dead Bottom Input -->
+            <div class="input-row">
+                <label>Dead Bottom (all tanks):</label>
+                <input type="number" id="defaultDeadBottom" value="10000" min="10000" max="10500" onchange="autoSaveInputs()">
+                <span>bbl</span>
+                <button type="button" onclick="applyDefaultDeadBottom()">Apply to All Tanks</button>
+            </div>
+            <div class="input-row">
+                <label>Buffer Volume (per tank):</label>
+                <input type="number" id="bufferVolume" value="500" min="0" max="1000" onchange="autoSaveInputs()">
+                <span>bbl (operational cushion)</span>
+            </div>
+            
+            <div class="tank-grid" id="tankGrid">
+                <!-- Tanks 1-12 -->
+                <div class="tank-box">
+                    <h4>Tank 1</h4>
+                    <div class="tank-input-row">
+                        <label>Current Level:</label>
+                        <input type="number" id="tank1Level" value="400000" min="0" max="500000" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                    <div class="tank-input-row">
+                        <label>Dead Bottom:</label>
+                        <input type="number" id="deadBottom1" value="10000" min="10000" max="10500" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                </div>
+                
+                <div class="tank-box">
+                    <h4>Tank 2</h4>
+                    <div class="tank-input-row">
+                        <label>Current Level:</label>
+                        <input type="number" id="tank2Level" value="300000" min="0" max="500000" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                    <div class="tank-input-row">
+                        <label>Dead Bottom:</label>
+                        <input type="number" id="deadBottom2" value="10000" min="10000" max="10500" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                </div>
+                
+                <div class="tank-box">
+                    <h4>Tank 3</h4>
+                    <div class="tank-input-row">
+                        <label>Current Level:</label>
+                        <input type="number" id="tank3Level" value="0" min="0" max="500000" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                    <div class="tank-input-row">
+                        <label>Dead Bottom:</label>
+                        <input type="number" id="deadBottom3" value="10000" min="10000" max="10500" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                </div>
+
+                <div class="tank-box">
+                    <h4>Tank 4</h4>
+                    <div class="tank-input-row">
+                        <label>Current Level:</label>
+                        <input type="number" id="tank4Level" value="0" min="0" max="500000" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                    <div class="tank-input-row">
+                        <label>Dead Bottom:</label>
+                        <input type="number" id="deadBottom4" value="10000" min="10000" max="10500" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                </div>
+                
+                <div class="tank-box">
+                    <h4>Tank 5</h4>
+                    <div class="tank-input-row">
+                        <label>Current Level:</label>
+                        <input type="number" id="tank5Level" value="0" min="0" max="500000" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                    <div class="tank-input-row">
+                        <label>Dead Bottom:</label>
+                        <input type="number" id="deadBottom5" value="10000" min="10000" max="10500" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                </div>
+                
+                <div class="tank-box">
+                    <h4>Tank 6</h4>
+                    <div class="tank-input-row">
+                        <label>Current Level:</label>
+                        <input type="number" id="tank6Level" value="0" min="0" max="500000" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                    <div class="tank-input-row">
+                        <label>Dead Bottom:</label>
+                        <input type="number" id="deadBottom6" value="10000" min="10000" max="10500" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                </div>
+
+                <div class="tank-box">
+                    <h4>Tank 7</h4>
+                    <div class="tank-input-row">
+                        <label>Current Level:</label>
+                        <input type="number" id="tank7Level" value="0" min="0" max="500000" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                    <div class="tank-input-row">
+                        <label>Dead Bottom:</label>
+                        <input type="number" id="deadBottom7" value="10000" min="10000" max="10500" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                </div>
+                
+                <div class="tank-box">
+                    <h4>Tank 8</h4>
+                    <div class="tank-input-row">
+                        <label>Current Level:</label>
+                        <input type="number" id="tank8Level" value="0" min="0" max="500000" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                    <div class="tank-input-row">
+                        <label>Dead Bottom:</label>
+                        <input type="number" id="deadBottom8" value="10000" min="10000" max="10500" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                </div>
+                
+                <div class="tank-box">
+                    <h4>Tank 9</h4>
+                    <div class="tank-input-row">
+                        <label>Current Level:</label>
+                        <input type="number" id="tank9Level" value="0" min="0" max="500000" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                    <div class="tank-input-row">
+                        <label>Dead Bottom:</label>
+                        <input type="number" id="deadBottom9" value="10000" min="10000" max="10500" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                </div>
+
+                <div class="tank-box">
+                    <h4>Tank 10</h4>
+                    <div class="tank-input-row">
+                        <label>Current Level:</label>
+                        <input type="number" id="tank10Level" value="0" min="0" max="500000" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                    <div class="tank-input-row">
+                        <label>Dead Bottom:</label>
+                        <input type="number" id="deadBottom10" value="10000" min="10000" max="10500" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                </div>
+                
+                <div class="tank-box">
+                    <h4>Tank 11</h4>
+                    <div class="tank-input-row">
+                        <label>Current Level:</label>
+                        <input type="number" id="tank11Level" value="0" min="0" max="500000" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                    <div class="tank-input-row">
+                        <label>Dead Bottom:</label>
+                        <input type="number" id="deadBottom11" value="10000" min="10000" max="10500" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                </div>
+                
+                <div class="tank-box">
+                    <h4>Tank 12</h4>
+                    <div class="tank-input-row">
+                        <label>Current Level:</label>
+                        <input type="number" id="tank12Level" value="0" min="0" max="500000" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                    <div class="tank-input-row">
+                        <label>Dead Bottom:</label>
+                        <input type="number" id="deadBottom12" value="10000" min="10000" max="10500" onchange="autoSaveInputs()">
+                        <span>bbl</span>
+                    </div>
+                </div>
+            </div>
+            
+            <p><em>Note: Tanks stop feeding at 10,000-10,500 bbl. Only tanks at dead bottom can receive new cargo.</em></p>
+        </div>
+
+        <div class="input-section">
+            <h2>📊 Reporting Parameters</h2>
+            <div class="input-row">
+                <label>Crude Processing Date:</label>
+                <input type="datetime-local" id="crudeProcessingDate" value="2025-08-10T08:00" onchange="autoSaveInputs()">
+                <span>date/month/year (processing start date)</span>
+            </div>
+            <div class="input-row">
+                <label>Report Days:</label>
+                <input type="number" id="schedulingWindow" value="30" min="7" max="90" onchange="autoSaveInputs()">
+                <span>days to display (from departure date)</span>
+            </div>
+            <div class="input-row">
+                <label>Supply Disruption Duration:</label>
+                <input type="number" id="disruptionDuration" value="0" min="0" max="60" onchange="autoSaveInputs()">
+                <span>days (0 = no disruption)</span>
+            </div>
+            <div class="input-row">
+                <label>Disruption Start Day:</label>
+                <input type="number" id="disruptionStart" value="20" min="1" onchange="autoSaveInputs()">
+                <span>day when disruption begins</span>
+            </div>
+        </div>
+
+        <div class="btn-group">
+            <button onclick="runSimulation()">🔄 Run Simulation</button>
+            <button onclick="calculateBuffer()">📊 Buffer Analysis</button>
+            <button onclick="optimizeTanks()">⚡ Optimize Cargo</button>
+            <button onclick="showTankStatus()">🛢️ Tank Status</button>
+            <button onclick="exportCharts()">📈 Charts</button>
+            
+            <!-- Navigation Buttons -->
+            <button onclick="scrollToTop()" style="background-color: #17a2b8;">⬆️ TOP</button>
+            <button onclick="scrollToCargoReport()" style="background-color: #17a2b8;">📊 MIDDLE</button>
+            <button onclick="scrollToBottom()" style="background-color: #17a2b8;">⬇️ DOWN</button>
+                      
+            <button onclick="autoSaveInputs()" style="background-color: #6c757d;">💾 Save Inputs</button>
+            <button onclick="autoLoadInputs()" style="background-color: #6c757d;">📂 Load Inputs</button>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Running simulation...</p>
+        </div>
+
+        <div id="results" class="results" style="display: none;">
+            <div class="tabs">
+                <button class="tab active" onclick="showTab('simulation', this)">Simulation Results</button>
+                <button class="tab" onclick="showTab('buffer', this)">Buffer Analysis</button>
+                <button class="tab" onclick="showTab('optimization', this)">Cargo Optimization</button>
+                <button class="tab" onclick="showTab('tankstatus', this)">Tank Status</button>
+                <button class="tab" onclick="showTab('inventory', this)">Inventory Tracking</button>
+            </div>
+
+            <div id="simulation" class="tab-content active">
+                <h2>📈 Simulation Results</h2>
+                <div id="alertsContainer"></div>
+                <div id="sequencesContainer"></div>
+                <div id="metricsContainer"></div>
+
+                <div id="cargoReportContainer"></div>
+                <div id="dailyReportContainer"></div>
+                <div id="chartContainer" class="chart-container"></div>
+            </div>
+
+            <div id="buffer" class="tab-content">
+                <h2>🛡️ Buffer Stock Analysis</h2>
+                <div id="bufferResults"></div>
+            </div>
+
+            <div id="optimization" class="tab-content">
+                <h2>⚡ Cargo Type Optimization</h2>
+                <div id="optimizationResults"></div>
+            </div>
+
+            <div id="tankstatus" class="tab-content">
+                <h2>🛢️ Daily Tank Status</h2>
+                <p><em>Status: READY → FEEDING → EMPTY (10,000-10,500 bbl) → FILLING → FILLED → SUSPENDED → SETTLING → LAB TESTING → READY</em></p>
+                <div id="tankStatusResults"></div>
+            </div>
+
+            <div id="inventory" class="tab-content">
+                <h2>📊 Real-Time Inventory Tracking</h2>
+                <p><em>Real-time inventory (excluding dead bottom) plotted against days</em></p>
+                <div id="inventoryResults">
+                    <canvas id="inventoryChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    
+</body>
+</html>
