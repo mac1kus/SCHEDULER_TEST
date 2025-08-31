@@ -2,6 +2,7 @@
 
 from flask import Flask
 import os
+import logging
 
 def create_app():
     """Application factory pattern"""
@@ -15,6 +16,9 @@ def create_app():
 
 # Create app instance for gunicorn
 app = create_app()
+
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.INFO)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

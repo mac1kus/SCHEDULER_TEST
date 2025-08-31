@@ -24,6 +24,7 @@ const TANK_STATUS_COLORS = {
     EMPTY: '#6c757d'
 };
 
+// FIXED: Added missing EXPORT_CHARTS endpoint
 const API_ENDPOINTS = {
     SIMULATE: '/api/simulate',
     BUFFER_ANALYSIS: '/api/buffer_analysis',
@@ -31,7 +32,8 @@ const API_ENDPOINTS = {
     SAVE_INPUTS: '/api/save_inputs',
     LOAD_INPUTS: '/api/load_inputs',
     EXPORT_DATA: '/api/export_data',
-    EXPORT_TANK_STATUS: '/api/export_tank_status'
+    EXPORT_TANK_STATUS: '/api/export_tank_status',
+    EXPORT_CHARTS: '/api/export_charts'  // ADDED THIS
 };
 
 /**
@@ -96,14 +98,28 @@ function scrollToSimulation() {
     }
 }
 
-// Tank management functions (moved from HTML, using HTML versions)
+// FIXED: Tank management functions with better error handling
 function updateTankCount() {
-    const numTanks = parseInt(document.getElementById('numTanks').value);
+    const numTanksInput = document.getElementById('numTanks');
+    if (!numTanksInput) {
+        console.error('numTanks input not found');
+        return;
+    }
+    
+    const numTanks = parseInt(numTanksInput.value);
     const tankCountDisplay = document.getElementById('tankCountDisplay');
-    tankCountDisplay.textContent = `tanks (${numTanks} tanks total)`;
+    
+    if (tankCountDisplay) {
+        tankCountDisplay.textContent = `tanks (${numTanks} tanks total)`;
+    }
     
     // Update tank grid to show/hide tanks based on count
     const tankGrid = document.getElementById('tankGrid');
+    if (!tankGrid) {
+        console.error('tankGrid not found');
+        return;
+    }
+    
     const existingTanks = tankGrid.querySelectorAll('.tank-box').length;
     
     if (numTanks > existingTanks) {
@@ -112,18 +128,16 @@ function updateTankCount() {
             addNewTankBox(i);
         }
     } else if (numTanks < existingTanks) {
-        // Remove extra tanks
-        for (let i = existingTanks; i > numTanks; i--) {
-            const tankBox = tankGrid.querySelector(`.tank-box:nth-child(${i})`);
-            if (tankBox) {
-                tankBox.remove();
-            }
-        }
+        // Remove extra tanks - FIXED: Better removal logic
+        const tanksToRemove = tankGrid.querySelectorAll(`.tank-box:nth-child(n+${numTanks + 1})`);
+        tanksToRemove.forEach(tank => tank.remove());
     }
 }
 
 function addOneTank() {
     const numTanksInput = document.getElementById('numTanks');
+    if (!numTanksInput) return;
+    
     const currentCount = parseInt(numTanksInput.value);
     numTanksInput.value = currentCount + 1;
     updateTankCount();
@@ -132,32 +146,31 @@ function addOneTank() {
 
 function removeOneTank() {
     const numTanksInput = document.getElementById('numTanks');
-    const currentCount = parseInt(numTanksInput.value);
+    if (!numTanksInput) return;
     
-    // Set a minimum limit to prevent removing all tanks
+    const currentCount = parseInt(numTanksInput.value);
     const minTanks = 1;
 
     if (currentCount > minTanks) {
-        // Decrease the value of the number input field
         numTanksInput.value = currentCount - 1;
-
-        // Find the last tank's HTML element using its index and remove it
-        const tankGrid = document.getElementById('tankGrid');
-        const lastTankBox = tankGrid.querySelector(`.tank-box:nth-child(${currentCount})`);
-        
-        if (lastTankBox) {
-            tankGrid.removeChild(lastTankBox);
-        }
-
-        // Update the displayed tank count and save the inputs
-        updateTankCount();
+        updateTankCount(); // This will handle the removal
         autoSaveInputs();
     }
 }
 
 function addNewTankBox(tankNumber) {
     const tankGrid = document.getElementById('tankGrid');
-    const tankCapacity = document.getElementById('tankCapacity').value;
+    const tankCapacityInput = document.getElementById('tankCapacity');
+    
+    if (!tankGrid || !tankCapacityInput) {
+        console.error('Required elements not found for adding tank');
+        return;
+    }
+    
+    const tankCapacity = tankCapacityInput.value || 500000;
+    
+    // FIXED: Use tank capacity as initial value instead of 0
+    const initialTankLevel = tankCapacity;
     
     const tankBox = document.createElement('div');
     tankBox.className = 'tank-box';
@@ -165,7 +178,7 @@ function addNewTankBox(tankNumber) {
         <h4>Tank ${tankNumber}</h4>
         <div class="tank-input-row">
             <label>Current Level:</label>
-            <input type="number" id="tank${tankNumber}Level" value="0" min="0" max="${tankCapacity}" onchange="autoSaveInputs()">
+            <input type="number" id="tank${tankNumber}Level" value="${initialTankLevel}" min="0" max="${tankCapacity}" onchange="autoSaveInputs()">
             <span>bbl</span>
         </div>
         <div class="tank-input-row">
@@ -176,22 +189,33 @@ function addNewTankBox(tankNumber) {
     `;
     
     tankGrid.appendChild(tankBox);
+    
+    // FIXED: Update inventory validation after adding new tank
+    validateInventoryRange();
 }
 
 /**
- * Get current tank count dynamically
+ * FIXED: Get current tank count dynamically with better error handling
  */
 function getCurrentTankCount() {
-    const count = parseInt(document.getElementById('numTanks').value);
-    // Return the parsed number if it's a valid non-negative integer, otherwise return 0.
-    return !isNaN(count) && count >= 0 ? count : 0;
+    const numTanksInput = document.getElementById('numTanks');
+    if (!numTanksInput) {
+        console.error('numTanks input not found, defaulting to 12');
+        return 12;
+    }
+    
+    const count = parseInt(numTanksInput.value);
+    return !isNaN(count) && count >= 0 ? count : 12;
 }
 
 /**
  * AUTO-POPULATE TANK LEVELS FROM TANK CAPACITY - Updated for dynamic tanks
  */
 function populateTankLevels() {
-    const tankCapacity = document.getElementById('tankCapacity').value;
+    const tankCapacityInput = document.getElementById('tankCapacity');
+    if (!tankCapacityInput) return;
+    
+    const tankCapacity = tankCapacityInput.value;
     const numTanks = getCurrentTankCount();
 
     if (tankCapacity && parseFloat(tankCapacity) > 0) {
@@ -200,14 +224,38 @@ function populateTankLevels() {
             const tankLevelInput = document.getElementById(`tank${i}Level`);
             if (tankLevelInput) {
                 tankLevelInput.value = tankCapacity;
-                // Also update the max attribute
                 tankLevelInput.setAttribute('max', tankCapacity);
             }
         }
         console.log(`All ${numTanks} tanks populated with ${parseFloat(tankCapacity).toLocaleString()} bbl`);
-        // Also validate the inventory range immediately
         validateInventoryRange();
+        
+        // FIXED: Auto-save after populating tanks
+        autoSaveInputs();
     }
+}
+
+/**
+ * FIXED: Update tank capacity and auto-populate new tanks
+ */
+function updateTankCapacity() {
+    const tankCapacityInput = document.getElementById('tankCapacity');
+    if (!tankCapacityInput) return;
+    
+    const newCapacity = tankCapacityInput.value;
+    
+    // Update max attribute for all existing tank level inputs
+    const tankLevelInputs = document.querySelectorAll('input[id*="Level"]');
+    tankLevelInputs.forEach(input => {
+        if (input.id.includes('tank') && input.id.includes('Level')) {
+            input.setAttribute('max', newCapacity);
+        }
+    });
+    
+    // Auto-save the change
+    autoSaveInputs();
+    
+    console.log(`Tank capacity updated to ${parseFloat(newCapacity).toLocaleString()} bbl`);
 }
 
 /**
@@ -215,25 +263,23 @@ function populateTankLevels() {
  */
 function autoCalculatePumpingDays() {
     // Get the largest cargo capacity that's enabled
-    const vlcc = parseFloat(document.getElementById('vlccCapacity').value) || 0;
-    const suezmax = parseFloat(document.getElementById('suezmaxCapacity').value) || 0;
-    const aframax = parseFloat(document.getElementById('aframaxCapacity').value) || 0;
-    const panamax = parseFloat(document.getElementById('panamaxCapacity').value) || 0;
-    const handymax = parseFloat(document.getElementById('handymaxCapacity').value) || 0;
+    const vlcc = parseFloat(document.getElementById('vlccCapacity')?.value) || 0;
+    const suezmax = parseFloat(document.getElementById('suezmaxCapacity')?.value) || 0;
+    const aframax = parseFloat(document.getElementById('aframaxCapacity')?.value) || 0;
+    const panamax = parseFloat(document.getElementById('panamaxCapacity')?.value) || 0;
+    const handymax = parseFloat(document.getElementById('handymaxCapacity')?.value) || 0;
 
-    // Get the largest active cargo
     const largestCargo = Math.max(vlcc, suezmax, aframax, panamax, handymax);
-    const pumpingRate = parseFloat(document.getElementById('pumpingRate').value) || 30000;
+    const pumpingRate = parseFloat(document.getElementById('pumpingRate')?.value) || 30000;
 
     if (largestCargo > 0 && pumpingRate > 0) {
-        // Calculate pumping hours = cargo size / pumping rate
         const pumpingHours = largestCargo / pumpingRate;
-        document.getElementById('pumpingDaysDisplay').value = pumpingHours.toFixed(2);
-    } else {
-        document.getElementById('pumpingDaysDisplay').value = 0;
+        const displayElement = document.getElementById('pumpingDaysDisplay');
+        if (displayElement) {
+            displayElement.value = pumpingHours.toFixed(2);
+        }
     }
 
-    // Also update lead time since pumping hours affects it
     autoCalculateLeadTime();
 }
 
@@ -241,30 +287,38 @@ function autoCalculatePumpingDays() {
  * AUTO-CALCULATE LEAD TIME
  */
 function autoCalculateLeadTime() {
-    const preJourney = parseFloat(document.getElementById('preJourneyDays').value) || 0;
-    const journey = parseFloat(document.getElementById('journeyDays').value) || 0;
-    const preDischarge = parseFloat(document.getElementById('preDischargeDays').value) || 0;
-    const settling = parseFloat(document.getElementById('settlingTime').value) || 0;
-    const labTesting = parseFloat(document.getElementById('labTestingDays').value) || 0;
+    const preJourney = parseFloat(document.getElementById('preJourneyDays')?.value) || 0;
+    const journey = parseFloat(document.getElementById('journeyDays')?.value) || 0;
+    const preDischarge = parseFloat(document.getElementById('preDischargeDays')?.value) || 0;
+    const settling = parseFloat(document.getElementById('settlingTime')?.value) || 0;
+    const labTesting = parseFloat(document.getElementById('labTestingDays')?.value) || 0;
 
     const leadTime = preJourney + journey + preDischarge + settling + labTesting;
-    document.getElementById('leadTimeDisplay').value = leadTime.toFixed(1);
+    const displayElement = document.getElementById('leadTimeDisplay');
+    if (displayElement) {
+        displayElement.value = leadTime.toFixed(1);
+    }
 }
 
 /**
  * TOGGLE DEPARTURE MODE
  */
 function toggleDepartureMode() {
-    const mode = document.getElementById('departureMode').value;
+    const modeSelect = document.getElementById('departureMode');
+    if (!modeSelect) return;
+    
+    const mode = modeSelect.value;
     const manualSection = document.getElementById('manualDepartureSection');
     const solverSection = document.getElementById('solverDepartureSection');
 
-    if (mode === 'manual') {
-        manualSection.style.display = 'block';
-        solverSection.style.display = 'none';
-    } else {
-        manualSection.style.display = 'none';
-        solverSection.style.display = 'block';
+    if (manualSection && solverSection) {
+        if (mode === 'manual') {
+            manualSection.style.display = 'block';
+            solverSection.style.display = 'none';
+        } else {
+            manualSection.style.display = 'none';
+            solverSection.style.display = 'block';
+        }
     }
 }
 
@@ -272,7 +326,10 @@ function toggleDepartureMode() {
  * APPLY DEFAULT DEAD BOTTOM - Updated for dynamic tanks
  */
 function applyDefaultDeadBottom() {
-    const defaultValue = document.getElementById('defaultDeadBottom').value;
+    const defaultInput = document.getElementById('defaultDeadBottom');
+    if (!defaultInput) return;
+    
+    const defaultValue = defaultInput.value;
     const actualTankCount = document.querySelectorAll('.tank-box').length;
     
     for (let i = 1; i <= actualTankCount; i++) {
@@ -311,7 +368,7 @@ function collectFormData() {
 }
 
 /**
- * AUTO-SAVE INPUTS - Improved
+ * AUTO-SAVE INPUTS - Improved with better error handling
  */
 async function autoSaveInputs() {
     try {
@@ -333,7 +390,6 @@ async function autoSaveInputs() {
             
             if (response.ok) {
                 console.log('Inputs saved to server');
-                // Optional: Show a brief success indicator
                 showSaveStatus('saved');
             } else {
                 console.log('Server save failed, but localStorage saved');
@@ -409,12 +465,15 @@ async function runSimulation() {
 
         // Update solver recommended departure if in solver mode
         if (params.departureMode === 'solver' && currentResults.cargo_schedule && currentResults.cargo_schedule.length > 0) {
-            document.getElementById('solverRecommendedDeparture').value = currentResults.cargo_schedule[0].dep_port;
+            const solverElement = document.getElementById('solverRecommendedDeparture');
+            if (solverElement) {
+                solverElement.value = currentResults.cargo_schedule[0].dep_port;
+            }
         }
 
         // Display results
         displayResults(currentResults);
-        displayInventoryTracking(currentResults.simulation_data); // Also display inventory tracking
+        displayInventoryTracking(currentResults.simulation_data);
 
         Utils.showResults();
         showTab('simulation', document.querySelector('.tab'));
@@ -433,32 +492,34 @@ async function runSimulation() {
 function displayResults(data) {
     // Display alerts
     const alertsContainer = document.getElementById('alertsContainer');
-    alertsContainer.innerHTML = '<h3>⚠️ System Alerts</h3>';
+    if (alertsContainer) {
+        alertsContainer.innerHTML = '<h3>⚠️ System Alerts</h3>';
 
-    if (data.alerts && data.alerts.length > 0) {
-        const alertsList = document.createElement('div');
-        alertsList.className = 'alerts-list';
+        if (data.alerts && data.alerts.length > 0) {
+            const alertsList = document.createElement('div');
+            alertsList.className = 'alerts-list';
 
-        data.alerts.forEach(alert => {
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${alert.type}`;
-            alertDiv.innerHTML = `<strong>Day ${alert.day}:</strong> ${alert.message}`;
-            alertsList.appendChild(alertDiv);
-        });
+            data.alerts.forEach(alert => {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert alert-${alert.type}`;
+                alertDiv.innerHTML = `<strong>Day ${alert.day}:</strong> ${alert.message}`;
+                alertsList.appendChild(alertDiv);
+            });
 
-        alertsContainer.appendChild(alertsList);
-    } else {
-        alertsContainer.innerHTML += Utils.createAlert('success', '✅ No critical issues detected.');
+            alertsContainer.appendChild(alertsList);
+        } else {
+            alertsContainer.innerHTML += Utils.createAlert('success', '✅ No critical issues detected.');
+        }
     }
 
     // Display metrics
     const metricsContainer = document.getElementById('metricsContainer');
-    metricsContainer.innerHTML = '<h3>📊 Performance Metrics</h3>';
+    if (metricsContainer && data.metrics) {
+        metricsContainer.innerHTML = '<h3>📊 Performance Metrics</h3>';
 
-    if (data.metrics) {
         const metricsDiv = document.createElement('div');
         metricsDiv.className = 'metrics-grid';
-        // Safety checks added for metrics before calling .toFixed()
+        
         const processingEfficiency = data.metrics.processing_efficiency ? data.metrics.processing_efficiency.toFixed(1) : 'N/A';
         const avgUtilization = data.metrics.avg_utilization ? data.metrics.avg_utilization.toFixed(1) : 'N/A';
 
@@ -503,6 +564,7 @@ function displayResults(data) {
  */
 function displayDailyReport(results) {
     const container = document.getElementById('dailyReportContainer');
+    if (!container) return;
 
     if (!results.simulation_data || results.simulation_data.length === 0) {
         container.innerHTML = '<p>No daily report data available</p>';
@@ -528,8 +590,8 @@ function displayDailyReport(results) {
 
     results.simulation_data.forEach((dayData) => {
         const cargoInfo = dayData.cargo_type ? `${dayData.cargo_type} (${Utils.formatNumber(dayData.arrivals)})` : '-';
-        // Added safety check for tank_utilization
         const tankUtilization = dayData.tank_utilization ? dayData.tank_utilization.toFixed(1) + '%' : 'N/A';
+        
         tableHTML += `
             <tr>
                 <td><strong>${dayData.day}</strong></td>
@@ -572,7 +634,11 @@ async function calculateBuffer() {
 
         displayBufferAnalysis(bufferResults);
         Utils.showResults();
-        showTab('buffer', document.querySelectorAll('.tab')[1]);
+        
+        const tabs = document.querySelectorAll('.tab');
+        if (tabs[1]) {
+            showTab('buffer', tabs[1]);
+        }
 
     } catch (error) {
         console.error('Buffer analysis error:', error);
@@ -587,6 +653,7 @@ async function calculateBuffer() {
  */
 function displayBufferAnalysis(bufferResults) {
     const container = document.getElementById('bufferResults');
+    if (!container) return;
 
     let html = '<h3>🛡️ Buffer Analysis Report</h3>';
 
@@ -647,7 +714,11 @@ async function optimizeTanks() {
 
         displayCargoOptimizationResults(optimizationResults);
         Utils.showResults();
-        showTab('optimization', document.querySelectorAll('.tab')[2]);
+        
+        const tabs = document.querySelectorAll('.tab');
+        if (tabs[2]) {
+            showTab('optimization', tabs[2]);
+        }
 
     } catch (error) {
         console.error('Cargo optimization error:', error);
@@ -662,6 +733,7 @@ async function optimizeTanks() {
  */
 function displayCargoOptimizationResults(optimizationResults) {
     const container = document.getElementById('optimizationResults');
+    if (!container) return;
 
     let html = '<h3>⚡ Cargo Optimization Report</h3>';
 
@@ -713,77 +785,6 @@ function displayCargoOptimizationResults(optimizationResults) {
 }
 
 /**
- * SHOW TANK STATUS
- */
-async function showTankStatus() {
-    if (!currentResults) {
-        alert('Please run a simulation first');
-        return;
-    }
-
-    try {
-        Utils.showLoading(true);
-
-        const response = await fetch(API_ENDPOINTS.EXPORT_TANK_STATUS, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(currentResults)
-        });
-
-        if (!response.ok) {
-            throw new Error('Tank status export failed');
-        }
-
-        const result = await response.json();
-        alert(`✅ Tank status exported: ${result.filename}`);
-
-    } catch (error) {
-        console.error('Tank status error:', error);
-        alert('Tank status export failed: ' + error.message);
-    } finally {
-        Utils.showLoading(false);
-    }
-}
-
-/**
- * EXPORT SIMULATION REPORT
- */
-async function exportSimulationReport() {
-    try {
-        Utils.showLoading(true);
-
-        if (!currentResults) {
-            alert('Please run a simulation first before exporting.');
-            Utils.showLoading(false);
-            return;
-        }
-
-        const response = await fetch(API_ENDPOINTS.EXPORT_TANK_STATUS, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(currentResults)
-        });
-
-        if (!response.ok) {
-            throw new Error('Export failed');
-        }
-
-        const result = await response.json();
-        alert(`✅ Simulation report exported: ${result.filename}`);
-
-    } catch (error) {
-        console.error('Export error:', error);
-        alert('Export failed: ' + error.message);
-    } finally {
-        Utils.showLoading(false);
-    }
-}
-
-/**
  * DISPLAY CARGO REPORT
  */
 function displayCargoReport(data) {
@@ -801,28 +802,32 @@ function displayCargoReport(data) {
     html += '<p><em>Detailed cargo timeline with load port, departure, arrival, and discharge times</em></p>';
     html += '<div class="cargo-schedule-table">';
     html += '<table class="data-table">';
+
     html += '<thead><tr>';
-    html += '<th>Cargo Type</th>';
-    html += '<th>Load Port Time</th>';
-    html += '<th>Dep Time</th>';
-    html += '<th>Arrival Time</th>';
-    html += '<th>Dep Unload Port</th>';
-    html += '<th>Cargo Size</th>';
+    html += '<th>BERTH</th>';
+    html += '<th>CARGO NAME</th>';
+    html += '<th>CARGO TYPE</th>';
+    html += '<th>SIZE</th>';
+    html += '<th>L.PORT TIME</th>';
+    html += '<th>ARRIVAL</th>';
+    html += '<th>PUMPING</th>';
+    html += '<th>DEP.TIME</th>';
     html += '</tr></thead><tbody>';
 
     cargoReport.forEach(cargo => {
         html += '<tr>';
-        html += `<td>${cargo.Cargo_type}</td>`;
-        html += `<td>${cargo.Load_Port_time}</td>`;
-        html += `<td>${cargo.dep_time}</td>`;
-        html += `<td>${cargo.Arrival_time}</td>`;
-        html += `<td>${cargo.dep_unload_port}</td>`;
-        html += `<td>${cargo.Cargo_size}</td>`;
+        html += `<td>${cargo.berth || 'N/A'}</td>`;
+        html += `<td>${cargo.vessel_name || 'N/A'}</td>`;
+        html += `<td>${cargo.type || 'N/A'}</td>`;
+        html += `<td>${Utils.formatNumber(cargo.size) || '0'}</td>`;
+        html += `<td>${cargo.load_port_time || 'N/A'}</td>`;
+        html += `<td>${cargo.arrival_time || 'N/A'}</td>`;
+        html += `<td>${cargo.pumping_days ? cargo.pumping_days.toFixed(1) : 'N/A'}</td>`;
+        html += `<td>${cargo.dep_unload_port || 'N/A'}</td>`;
         html += '</tr>';
     });
 
     html += '</tbody></table></div>';
-
     container.innerHTML = html;
 }
 
@@ -841,25 +846,34 @@ function showTab(tabId, tabButton) {
     });
 
     // Show selected tab content and activate button
-    document.getElementById(tabId).classList.add('active');
-    if (tabButton) tabButton.classList.add('active');
+    const targetTab = document.getElementById(tabId);
+    if (targetTab) {
+        targetTab.classList.add('active');
+    }
+    if (tabButton) {
+        tabButton.classList.add('active');
+    }
 }
 
 /**
- * Validate inventory range inputs in real-time - Updated for dynamic tanks
+ * FIXED: Validate inventory range inputs in real-time
  */
 function validateInventoryRange() {
-    const minInventory = parseFloat(document.getElementById('minInventory').value) || 0;
-    const maxInventory = parseFloat(document.getElementById('maxInventory').value) || 0;
+    const minInventoryInput = document.getElementById('minInventory');
+    const maxInventoryInput = document.getElementById('maxInventory');
     const messageDiv = document.getElementById('inventoryValidationMessage');
-    // Count actual tank boxes in DOM instead of input field
+    
+    if (!minInventoryInput || !maxInventoryInput) return true;
+    
+    const minInventory = parseFloat(minInventoryInput.value) || 0;
+    const maxInventory = parseFloat(maxInventoryInput.value) || 0;
     const actualTankCount = document.querySelectorAll('.tank-box').length;
 
     let isValid = true;
     let message = '';
     let messageType = 'success';
 
-    if (minInventory >= maxInventory) {
+    if (minInventory >= maxInventory && maxInventory > 0) {
         isValid = false;
         message = '❌ Minimum inventory must be less than maximum inventory';
         messageType = 'error';
@@ -871,25 +885,32 @@ function validateInventoryRange() {
         // Calculate current inventory for all actual tanks
         let currentInventory = 0;
         const tankLevelInputs = document.querySelectorAll('input[id*="Level"]');
+        
         tankLevelInputs.forEach(input => {
             if (input.id.includes('tank') && input.id.includes('Level')) {
                 const tankNumber = input.id.replace('tank', '').replace('Level', '');
                 const tankLevel = parseFloat(input.value) || 0;
-                const deadBottom = parseFloat(document.getElementById(`deadBottom${tankNumber}`)?.value) || 10000;
+                const deadBottomInput = document.getElementById(`deadBottom${tankNumber}`);
+                const deadBottom = deadBottomInput ? parseFloat(deadBottomInput.value) || 10000 : 10000;
                 currentInventory += Math.max(0, tankLevel - deadBottom);
             }
         });
 
-        if (currentInventory < minInventory) {
-            isValid = false;
-            message = `⚠️ Current inventory (${currentInventory.toLocaleString()} bbl) is below minimum (${minInventory.toLocaleString()} bbl)`;
-            messageType = 'warning';
-        } else if (currentInventory > maxInventory) {
-            isValid = false;
-            message = `⚠️ Current inventory (${currentInventory.toLocaleString()} bbl) is above maximum (${maxInventory.toLocaleString()} bbl)`;
-            messageType = 'warning';
+        if (maxInventory > 0 && minInventory > 0) {
+            if (currentInventory < minInventory) {
+                isValid = false;
+                message = `⚠️ Current inventory (${currentInventory.toLocaleString()} bbl) is below minimum (${minInventory.toLocaleString()} bbl)`;
+                messageType = 'warning';
+            } else if (currentInventory > maxInventory) {
+                isValid = false;
+                message = `⚠️ Current inventory (${currentInventory.toLocaleString()} bbl) is above maximum (${maxInventory.toLocaleString()} bbl)`;
+                messageType = 'warning';
+            } else {
+                message = `✅ Current inventory: ${currentInventory.toLocaleString()} bbl (Range: ${minInventory.toLocaleString()} - ${maxInventory.toLocaleString()} bbl) - ${actualTankCount} tanks`;
+                messageType = 'success';
+            }
         } else {
-            message = `✅ Current inventory: ${currentInventory.toLocaleString()} bbl (Range: ${minInventory.toLocaleString()} - ${maxInventory.toLocaleString()} bbl) - ${actualTankCount} tanks`;
+            message = `✅ Current inventory: ${currentInventory.toLocaleString()} bbl - ${actualTankCount} tanks (No range limits set)`;
             messageType = 'success';
         }
     }
@@ -954,13 +975,15 @@ function checkInventoryRange() {
  */
 function displayInventoryTracking(inventoryData) {
     const container = document.getElementById('inventoryResults');
-    if (!container || !inventoryData || inventoryData.length === 0) {
+    const chartCanvas = document.getElementById('inventoryChart');
+    
+    if (!container || !chartCanvas || !inventoryData || inventoryData.length === 0) {
         if (container) container.innerHTML = '<p>No inventory tracking data available.</p>';
         return;
     }
     
     // Setup for Chart.js
-    const ctx = document.getElementById('inventoryChart').getContext('2d');
+    const ctx = chartCanvas.getContext('2d');
     const labels = inventoryData.map(d => `Day ${d.day}`);
     const dataPoints = inventoryData.map(d => d.end_inventory);
 
@@ -1004,9 +1027,17 @@ function displayInventoryTracking(inventoryData) {
  * Enhanced runSimulation function with inventory validation
  */
 function runSimulationWithInventoryCheck() {
-    // First validate inventory range
-    const minInventory = parseFloat(document.getElementById('minInventory').value) || 0;
-    const maxInventory = parseFloat(document.getElementById('maxInventory').value) || 0;
+    const minInventoryInput = document.getElementById('minInventory');
+    const maxInventoryInput = document.getElementById('maxInventory');
+    
+    if (!minInventoryInput || !maxInventoryInput) {
+        // If inputs don't exist, run normal simulation
+        runSimulation();
+        return;
+    }
+    
+    const minInventory = parseFloat(minInventoryInput.value) || 0;
+    const maxInventory = parseFloat(maxInventoryInput.value) || 0;
 
     if (minInventory > 0 || maxInventory > 0) {
         if (minInventory >= maxInventory) {
@@ -1015,158 +1046,27 @@ function runSimulationWithInventoryCheck() {
         }
     }
 
-    // Proceed with normal simulation
     runSimulation();
 }
 
 /**
- * Update collectSimulationParams to include inventory range
+ * FIXED: Export Charts - Handle file download properly using API_ENDPOINTS
  */
-function collectSimulationParamsWithInventory() {
-    const params = collectFormData();
-
-    // Add inventory range parameters
-    params.minInventory = parseFloat(document.getElementById('minInventory').value) || 0;
-    params.maxInventory = parseFloat(document.getElementById('maxInventory').value) || 0;
-
-    return params;
-}
-
-// CORRECT - handles file download
-
-
-/**
- * Enhanced export function to handle inventory data
- */
-function exportSimulationReportWithInventory() {
-    if (!currentResults) {
-        alert('Please run a simulation first before exporting.');
-        return;
-    }
-
-    Utils.showLoading(true);
-
-    fetch('/api/export_tank_status', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(currentResults)
-        })
-        .then(response => response.json())
-        .then(data => {
-            Utils.showLoading(false);
-            if (data.success) {
-                alert(`✅ COMPLETE EXPORT SUCCESSFUL\n\nFile: ${data.filename}\n\nFeatures included:\n${data.features?.join('\n') || 'All fixed requirements implemented'}\n\nIncluding INVENTORY sheet with real-time graph!`);
-            } else {
-                alert(`❌ Export failed: ${data.error}`);
-            }
-        })
-        .catch(error => {
-            Utils.showLoading(false);
-            console.error('Export error:', error);
-            alert('❌ Export failed. Please try again.');
-        });
-}
-
-function initializeAutoSave() {
-    // Get all input and select elements
-    const inputs = document.querySelectorAll('input, select');
-    
-    inputs.forEach(input => {
-        // Add event listeners for different input types
-        if (input.type === 'number' || input.type === 'text') {
-            // For text/number inputs, save on blur (when user finishes editing)
-            input.addEventListener('blur', autoSaveInputs);
-            // Also save on input change with debouncing
-            let timeout;
-            input.addEventListener('input', () => {
-                clearTimeout(timeout);
-                timeout = setTimeout(autoSaveInputs, 1000); // Save after 1 second of no typing
-            });
-        } else {
-            // For select, radio, checkbox - save immediately on change
-            input.addEventListener('change', autoSaveInputs);
-        }
-    });
-    
-    console.log(`Auto-save initialized for ${inputs.length} inputs`);
-}
-
-
-
-
-
-// ADD SAVE STATUS INDICATOR (Optional visual feedback)
-function showSaveStatus(status) {
-    // Create or update save status indicator
-    let indicator = document.getElementById('saveIndicator');
-    if (!indicator) {
-        indicator = document.createElement('div');
-        indicator.id = 'saveIndicator';
-        indicator.style.cssText = `
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            padding: 8px 12px;
-            background: #28a745;
-            color: white;
-            border-radius: 4px;
-            font-size: 12px;
-            z-index: 1000;
-            transition: opacity 0.3s;
-        `;
-        document.body.appendChild(indicator);
-    }
-    
-    if (status === 'saved') {
-        indicator.textContent = '✓ Saved';
-        indicator.style.opacity = '1';
-        setTimeout(() => {
-            indicator.style.opacity = '0';
-        }, 2000);
-    }
-}
-
-// HELPER FUNCTION TO APPLY VALUES
-function applyInputValues(inputValues) {
-    Object.entries(inputValues).forEach(([id, value]) => {
-        const element = document.getElementById(id);
-        if (element) {
-            if (element.type === 'checkbox') {
-                element.checked = value;
-            } else {
-                element.value = value;
-            }
-        }
-    });
-
-    // Update tank count if it was saved
-    if (inputValues.numTanks) {
-        updateTankCount();
-    }
-
-    // Update calculations after loading
-    toggleDepartureMode();
-    autoCalculateLeadTime();
-    autoCalculatePumpingDays();
-    validateInventoryRange();
-}
-
 async function exportCharts() {
-    // Check if simulation has been run
     if (!currentResults) {
         alert('⚠️ Please run a simulation first to generate charts data.');
         return;
     }
 
     try {
-        // Show loading spinner
         Utils.showLoading(true);
-        document.getElementById('loading').querySelector('p').textContent = 'Generating charts...';
+        const loadingText = document.getElementById('loading')?.querySelector('p');
+        if (loadingText) {
+            loadingText.textContent = 'Generating charts...';
+        }
         
-        // Send simulation results to backend for chart generation
-        const response = await fetch('/api/export_charts', {
+        // FIXED: Use API_ENDPOINTS constant
+        const response = await fetch(API_ENDPOINTS.EXPORT_CHARTS, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1174,48 +1074,46 @@ async function exportCharts() {
             body: JSON.stringify(currentResults)
         });
 
-        const result = await response.json();
-
-        if (result.success) {
-            alert(`✅ ${result.message}`);
-        } else {
-            alert(`❌ Charts export failed: ${result.error}`);
+        if (!response.ok) {
+            throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
         }
+
+        // FIXED: Handle file download properly (not JSON response)
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        
+        // Get filename from Content-Disposition header or use default
+        const disposition = response.headers.get('Content-Disposition');
+        let filename = 'charts_export.xlsx';
+        if (disposition) {
+            const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+            if (matches != null && matches[1]) {
+                filename = matches[1].replace(/['"]/g, '');
+            }
+        }
+        
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        alert(`✅ Charts exported and downloaded: ${filename}`);
         
     } catch (error) {
         console.error('Charts export error:', error);
         alert(`❌ Charts export error: ${error.message}`);
     } finally {
-        // Hide loading spinner
         Utils.showLoading(false);
-        document.getElementById('loading').querySelector('p').textContent = 'Running simulation...';
+        const loadingText = document.getElementById('loading')?.querySelector('p');
+        if (loadingText) {
+            loadingText.textContent = 'Running simulation...';
+        }
     }
 }
-
-function scrollToReport() {
-    const element = document.getElementById('dailyReportContainer');
-    if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-}
-
-// CONSOLIDATED INITIALIZATION - Merged from HTML and existing main.js
-document.addEventListener('DOMContentLoaded', () => {
-    // Load saved inputs first
-    autoLoadInputs();
-    
-    // Initialize calculations (from HTML)
-    autoCalculateLeadTime();
-    autoCalculatePumpingDays();
-    validateInventoryRange();
-    
-    // Update tank count to create missing tanks
-    setTimeout(() => {
-        updateTankCount();
-        initializeAutoSave();
-    }, 500); // Small delay to ensure all elements are loaded
-});
-
 
 /**
  * FIXED: Show Tank Status - Handle file download properly
@@ -1241,39 +1139,29 @@ async function showTankStatus() {
             throw new Error('Tank status export failed');
         }
 
-        // Check if response is a file or JSON
-        const contentType = response.headers.get('content-type');
+        // Handle file download
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
         
-        if (contentType && contentType.includes('application/json')) {
-            // It's JSON - parse it
-            const result = await response.json();
-            alert(`✅ Tank status exported: ${result.filename}`);
-        } else {
-            // It's a file - trigger download
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            
-            // Get filename from Content-Disposition header or use default
-            const disposition = response.headers.get('Content-Disposition');
-            let filename = 'tank_status_export.xlsx';
-            if (disposition) {
-                const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
-                if (matches != null && matches[1]) {
-                    filename = matches[1].replace(/['"]/g, '');
-                }
+        const disposition = response.headers.get('Content-Disposition');
+        let filename = 'tank_status_export.xlsx';
+        if (disposition) {
+            const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+            if (matches != null && matches[1]) {
+                filename = matches[1].replace(/['"]/g, '');
             }
-            
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-            
-            alert(`✅ Tank status downloaded: ${filename}`);
         }
+        
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        alert(`✅ Tank status downloaded: ${filename}`);
 
     } catch (error) {
         console.error('Tank status error:', error);
@@ -1308,39 +1196,29 @@ async function exportSimulationReport() {
             throw new Error('Export failed');
         }
 
-        // Check if response is a file or JSON
-        const contentType = response.headers.get('content-type');
+        // Handle file download
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
         
-        if (contentType && contentType.includes('application/json')) {
-            // It's JSON - parse it
-            const result = await response.json();
-            alert(`✅ Simulation report exported: ${result.filename}`);
-        } else {
-            // It's a file - trigger download
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            
-            // Get filename from Content-Disposition header or use default
-            const disposition = response.headers.get('Content-Disposition');
-            let filename = 'simulation_report.xlsx';
-            if (disposition) {
-                const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
-                if (matches != null && matches[1]) {
-                    filename = matches[1].replace(/['"]/g, '');
-                }
+        const disposition = response.headers.get('Content-Disposition');
+        let filename = 'simulation_report.xlsx';
+        if (disposition) {
+            const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+            if (matches != null && matches[1]) {
+                filename = matches[1].replace(/['"]/g, '');
             }
-            
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-            
-            alert(`✅ Simulation report downloaded: ${filename}`);
         }
+        
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        alert(`✅ Simulation report downloaded: ${filename}`);
 
     } catch (error) {
         console.error('Export error:', error);
@@ -1350,155 +1228,118 @@ async function exportSimulationReport() {
     }
 }
 
-/**
- * FIXED: Export Simulation Report With Inventory - Handle file download properly
- */
-function exportSimulationReportWithInventory() {
-    if (!currentResults) {
-        alert('Please run a simulation first before exporting.');
-        return;
-    }
-
-    Utils.showLoading(true);
-
-    fetch('/api/export_tank_status', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(currentResults)
-        })
-        .then(async response => {
-            if (!response.ok) {
-                throw new Error('Export failed');
-            }
-
-            // Check if response is a file or JSON
-            const contentType = response.headers.get('content-type');
-            
-            if (contentType && contentType.includes('application/json')) {
-                // It's JSON - parse it
-                const data = await response.json();
-                Utils.showLoading(false);
-                if (data.success) {
-                    alert(`✅ COMPLETE EXPORT SUCCESSFUL\n\nFile: ${data.filename}\n\nFeatures included:\n${data.features?.join('\n') || 'All fixed requirements implemented'}\n\nIncluding INVENTORY sheet with real-time graph!`);
-                } else {
-                    alert(`❌ Export failed: ${data.error}`);
-                }
-            } else {
-                // It's a file - trigger download
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                
-                // Get filename from Content-Disposition header or use default
-                const disposition = response.headers.get('Content-Disposition');
-                let filename = 'complete_simulation_report.xlsx';
-                if (disposition) {
-                    const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
-                    if (matches != null && matches[1]) {
-                        filename = matches[1].replace(/['"]/g, '');
-                    }
-                }
-                
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-                
-                Utils.showLoading(false);
-                alert(`✅ COMPLETE EXPORT SUCCESSFUL\n\nFile downloaded: ${filename}\n\nIncluding INVENTORY sheet with real-time graph!`);
-            }
-        })
-        .catch(error => {
-            Utils.showLoading(false);
-            console.error('Export error:', error);
-            alert('❌ Export failed. Please try again.');
-        });
-}
-
-/**
- * FIXED: Export Charts - Handle file download properly
- */
-async function exportCharts() {
-    // Check if simulation has been run
-    if (!currentResults) {
-        alert('⚠️ Please run a simulation first to generate charts data.');
-        return;
-    }
-
-    try {
-        // Show loading spinner
-        Utils.showLoading(true);
-        document.getElementById('loading').querySelector('p').textContent = 'Generating charts...';
-        
-        // Send simulation results to backend for chart generation
-        const response = await fetch('/api/export_charts', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(currentResults)
-        });
-
-        if (!response.ok) {
-            throw new Error('Charts export failed');
-        }
-
-        // Check if response is a file or JSON
-        const contentType = response.headers.get('content-type');
-        
-        if (contentType && contentType.includes('application/json')) {
-            // It's JSON - parse it
-            const result = await response.json();
-            if (result.success) {
-                alert(`✅ ${result.message}`);
-            } else {
-                alert(`❌ Charts export failed: ${result.error}`);
-            }
+function initializeAutoSave() {
+    const inputs = document.querySelectorAll('input, select');
+    
+    inputs.forEach(input => {
+        if (input.type === 'number' || input.type === 'text') {
+            input.addEventListener('blur', autoSaveInputs);
+            let timeout;
+            input.addEventListener('input', () => {
+                clearTimeout(timeout);
+                timeout = setTimeout(autoSaveInputs, 1000);
+            });
         } else {
-            // It's a file - trigger download
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            
-            // Get filename from Content-Disposition header or use default
-            const disposition = response.headers.get('Content-Disposition');
-            let filename = 'charts_export.xlsx';
-            if (disposition) {
-                const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
-                if (matches != null && matches[1]) {
-                    filename = matches[1].replace(/['"]/g, '');
-                }
-            }
-            
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-            
-            alert(`✅ Charts exported and downloaded: ${filename}`);
+            input.addEventListener('change', autoSaveInputs);
         }
-        
-    } catch (error) {
-        console.error('Charts export error:', error);
-        alert(`❌ Charts export error: ${error.message}`);
-    } finally {
-        // Hide loading spinner
-        Utils.showLoading(false);
-        document.getElementById('loading').querySelector('p').textContent = 'Running simulation...';
+    });
+    
+    console.log(`Auto-save initialized for ${inputs.length} inputs`);
+}
+
+function showSaveStatus(status) {
+    let indicator = document.getElementById('saveIndicator');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'saveIndicator';
+        indicator.style.cssText = `
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            background: #28a745;
+            color: white;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+            transition: opacity 0.3s;
+        `;
+        document.body.appendChild(indicator);
+    }
+    
+    if (status === 'saved') {
+        indicator.textContent = '✓ Saved';
+        indicator.style.opacity = '1';
+        setTimeout(() => {
+            indicator.style.opacity = '0';
+        }, 2000);
     }
 }
 
+function applyInputValues(inputValues) {
+    Object.entries(inputValues).forEach(([id, value]) => {
+        const element = document.getElementById(id);
+        if (element) {
+            if (element.type === 'checkbox') {
+                element.checked = value;
+            } else {
+                element.value = value;
+            }
+        }
+    });
+
+    // Update tank count if it was saved
+    if (inputValues.numTanks) {
+        updateTankCount();
+    }
+
+    // Update calculations after loading
+    toggleDepartureMode();
+    autoCalculateLeadTime();
+    autoCalculatePumpingDays();
+    validateInventoryRange();
+}
+
+function scrollToReport() {
+    const element = document.getElementById('dailyReportContainer');
+    if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
+// FIXED: Consolidated initialization with better error handling
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        // Load saved inputs first
+        autoLoadInputs();
+        
+        // Initialize calculations
+        autoCalculateLeadTime();
+        autoCalculatePumpingDays();
+        validateInventoryRange();
+        
+        // FIXED: Add auto-save to tank capacity field specifically
+        const tankCapacityInput = document.getElementById('tankCapacity');
+        if (tankCapacityInput) {
+            tankCapacityInput.addEventListener('input', updateTankCapacity);
+            tankCapacityInput.addEventListener('change', updateTankCapacity);
+        }
+        
+        // Update tank count to create missing tanks with delay
+        setTimeout(() => {
+            updateTankCount();
+            initializeAutoSave();
+        }, 500);
+        
+        console.log('Application initialized successfully');
+    } catch (error) {
+        console.error('Initialization error:', error);
+    }
+});
 
 // Make all functions globally available
 window.populateTankLevels = populateTankLevels;
+window.updateTankCapacity = updateTankCapacity;  // ADDED THIS
 window.autoCalculatePumpingDays = autoCalculatePumpingDays;
 window.autoCalculateLeadTime = autoCalculateLeadTime;
 window.toggleDepartureMode = toggleDepartureMode;
@@ -1514,18 +1355,17 @@ window.showTab = showTab;
 window.validateInventoryRange = validateInventoryRange;
 window.checkInventoryRange = checkInventoryRange;
 window.runSimulationWithInventoryCheck = runSimulationWithInventoryCheck;
-window.exportSimulationReportWithInventory = exportSimulationReportWithInventory;
-
-// Add the moved functions to global window object
 window.scrollToTop = scrollToTop;
 window.scrollToCargoReport = scrollToCargoReport;
 window.scrollToBottom = scrollToBottom;
 window.scrollToSimulation = scrollToSimulation;
 window.updateTankCount = updateTankCount;
 window.addOneTank = addOneTank;
+window.removeOneTank = removeOneTank;
 window.addNewTankBox = addNewTankBox;
 window.initializeAutoSave = initializeAutoSave;
 window.showSaveStatus = showSaveStatus;
 window.applyInputValues = applyInputValues;
 window.getCurrentTankCount = getCurrentTankCount;
 window.exportCharts = exportCharts;
+window.scrollToReport = scrollToReport;

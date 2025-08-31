@@ -102,7 +102,7 @@ def register_routes(app):
             current_row += 1
             
             for cargo in cargo_report:
-                arrival_time = cargo.get('Arrival_time', '')
+                arrival_time = cargo.get('arrival_time', '')
                 departure_time = cargo.get('dep_unload_port', '')
                 
                 arrival_date, arrival_time_only = '', ''
@@ -118,7 +118,7 @@ def register_routes(app):
                     departure_time_only = parts[1] if len(parts) > 1 else ''
                 
                 row_data = [
-                    cargo.get('Cargo_type', '').title(),
+                    cargo.get('type', '').title(),
                     arrival_date, arrival_time_only,
                     departure_date, departure_time_only
                 ]
@@ -602,6 +602,64 @@ def register_routes(app):
             traceback.print_exc()
             return False
 
+    
+    def _create_system_alerts_sheet(wb, results):
+        """Creates a new worksheet for the System Alerts log."""
+        try:
+            ws = wb.create_sheet("System Alerts")
+            alerts = results.get('alerts', [])
+
+            if not alerts:
+                ws.cell(row=1, column=1, value="No system alerts were generated.")
+                return True
+
+            # Define headers and styles
+            headers = ['Day', 'Alert Type', 'Message']
+            header_font = Font(bold=True, color="FFFFFF")
+            header_fill = PatternFill(start_color="4F4F4F", end_color="4F4F4F", fill_type="solid")
+
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal='center')
+
+            # Define styles for different alert types
+            alert_fills = {
+            'danger': PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"),
+            'warning': PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"),
+            'success': PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),
+            'info': PatternFill(fill_type=None) # No background for info
+            }
+        
+            # Populate data rows
+            current_row = 2
+            for alert in alerts:
+                alert_type = alert.get('type', 'info')
+                row_data = [
+                    alert.get('day', 'N/A'),
+                    alert_type.title(),
+                    alert.get('message', '')
+                ]
+            
+                fill = alert_fills.get(alert_type, alert_fills['info'])
+
+                for col, value in enumerate(row_data, 1):
+                    cell = ws.cell(row=current_row, column=col, value=value)
+                    cell.fill = fill
+            
+                current_row += 1
+
+            # Auto-adjust column widths
+            ws.column_dimensions['A'].width = 15
+            ws.column_dimensions['B'].width = 15
+            ws.column_dimensions['C'].width = 120
+        
+            return True
+        except Exception as e:
+           print(f"Error creating system alerts sheet: {str(e)}")
+           return False
+    
     def _create_simulation_data_sheet(wb, results):
         """Sheet 1: Simulation Data - Raw day-by-day simulation data"""
         try:
@@ -640,8 +698,8 @@ def register_routes(app):
                     day_data.get('date', ''),
                     day_data.get('day', ''),
                     day_data.get('start_inventory', 0),
-                    day_data.get('processed', 0),
-                    day_data.get('cargo_arrivals', 0),
+                    day_data.get('processing', 0),
+                    day_data.get('arrivals', 0),
                     day_data.get('end_inventory', 0)
                 ]
                 
@@ -1040,7 +1098,7 @@ def register_routes(app):
             current_row += 1
             
             for cargo in cargo_report:
-                arrival_time = cargo.get('Arrival_time', '')
+                arrival_time = cargo.get('arrival_time', '')
                 departure_time = cargo.get('dep_unload_port', '')
                 
                 arrival_date, arrival_time_only = '', ''
@@ -1074,7 +1132,7 @@ def register_routes(app):
                     duration = 'N/A'
                 
                 row_data = [
-                    cargo.get('Cargo_type', '').title(),
+                    cargo.get('type', '').title(),
                     arrival_date, arrival_time_only,
                     departure_date, departure_time_only,
                     duration
@@ -1085,7 +1143,7 @@ def register_routes(app):
                     cell.alignment = Alignment(horizontal='center')
                     
                     # Color code by cargo type
-                    cargo_type = cargo.get('Cargo_type', '').lower()
+                    cargo_type = cargo.get('type', '').lower()
                     if 'vlcc' in cargo_type:
                         cell.fill = PatternFill(start_color="E6F3FF", end_color="E6F3FF", fill_type="solid")
                     elif 'suezmax' in cargo_type:
@@ -1275,7 +1333,7 @@ def register_routes(app):
             ws.cell(row=current_row, column=1, value="CARGO DETAILS").font = Font(bold=True, size=12)
             current_row += 1
             
-            headers = ['Cargo', 'Type', 'Size (bbls)', 'Departure', 'Arrival', 'Discharge', 'Pumping Hrs', 'Status']
+            headers = ['Cargo','BERTH','Type', 'Size (bbls)', 'Departure', 'Arrival', 'Discharge', 'Pumping Hrs', 'Status']
             for col, header in enumerate(headers, 1):
                 cell = ws.cell(row=current_row, column=col, value=header)
                 cell.font = Font(bold=True, color="FFFFFF")
@@ -1290,8 +1348,8 @@ def register_routes(app):
             cargo_counter = 1
             for cargo in cargo_report:
                 try:
-                    cargo_type = str(cargo.get('Cargo_type', 'Unknown')).title()
-                    cargo_size = cargo.get('Cargo_size', 0)
+                    vessel_name = str(cargo.get('vessel_name', 'Unknown')).title()
+                    cargo_size = cargo.get('size', 0)
                     
                     # Safely get cargo size as number
                     if isinstance(cargo_size, str):
@@ -1308,18 +1366,19 @@ def register_routes(app):
                     
                     # Safely get time strings
                     departure_time = str(cargo.get('dep_time', 'N/A'))
-                    arrival_time = str(cargo.get('Arrival_time', 'N/A'))
+                    arrival_time = str(cargo.get('arrival_time', 'N/A'))
                     discharge_time = str(cargo.get('dep_unload_port', 'N/A'))
                     
                     row_data = [
                         f"Cargo {cargo_counter}",
-                        cargo_type,
+                        cargo.get('berth', 'N/A'),  # <-- ADD THIS LINE
+                        vessel_name,
                         cargo_size,  # Will be formatted by Excel
                         departure_time,
                         arrival_time,
                         discharge_time,
                         f"{pumping_hours:.1f}",
-                        "Scheduled"
+                        cargo.get('status', 'Scheduled') # <-- THIS IS THE CHANGE
                     ]
                     
                     for col, value in enumerate(row_data, 1):
@@ -1389,12 +1448,12 @@ def register_routes(app):
             timeline_data = []
             
             for i, cargo in enumerate(cargo_report):
-                cargo_type = str(cargo.get('Cargo_type', 'UNKNOWN')).upper()
-                cargo_size = cargo.get('Cargo_size', 0)
+                cargo_type = str(cargo.get('type', 'UNKNOWN')).upper()
+                cargo_size = cargo.get('size', 0)
                 
                 # Try to parse dates
                 try:
-                    arrival_str = cargo.get('Arrival_time', '')
+                    arrival_str = cargo.get('arrival_time', '')
                     departure_str = cargo.get('dep_unload_port', '')
                     
                     if arrival_str and departure_str:
@@ -1412,7 +1471,8 @@ def register_routes(app):
                                 'departure': departure_dt,
                                 'duration': duration_days,
                                 'arrival_day': arrival_str.split(' ')[0] if ' ' in arrival_str else arrival_str,
-                                'departure_day': departure_str.split(' ')[0] if ' ' in departure_str else departure_str
+                                'departure_day': departure_str.split(' ')[0] if ' ' in departure_str else departure_str,
+                                'vessel_name': cargo.get('vessel_name', f"Cargo {i+1}")
                             })
                 except Exception as e:
                     print(f"Error parsing dates for cargo {i+1}: {e}")
@@ -1426,7 +1486,7 @@ def register_routes(app):
             timeline_data.sort(key=lambda x: x['arrival'])
             
             # Create headers for timeline table
-            headers = ['Cargo', 'Type', 'Size (bbls)', 'Arrival', 'Departure', 'Duration', 'Visual Timeline']
+            headers = ['Vessel Type', 'Type', 'Size (bbls)', 'Arrival', 'Departure', 'Duration', 'Visual Timeline']
             for col, header in enumerate(headers, 1):
                 cell = ws.cell(row=current_row, column=col, value=header)
                 cell.font = Font(bold=True, color="FFFFFF")
@@ -1443,7 +1503,7 @@ def register_routes(app):
                 type_info = cargo_types.get(cargo_type, cargo_types['HANDYMAX'])  # Default to smallest
                 
                 # Basic cargo info
-                ws.cell(row=current_row, column=1, value=f"Cargo {cargo['cargo_num']}")
+                ws.cell(row=current_row, column=1, value=cargo.get('vessel_name', '')).alignment = Alignment(horizontal='center')
                 ws.cell(row=current_row, column=2, value=cargo_type).fill = PatternFill(
                     start_color=type_info['color'], 
                     end_color=type_info['color'], 
@@ -1647,6 +1707,7 @@ def register_routes(app):
             success_results['sheet7'] = _create_alerts_warnings_sheet(wb, results)
             success_results['sheet8'] = _create_cargo_schedule_sheet(wb, results)
             success_results['sheet9'] = _create_cargo_timeline_sheet(wb, results)
+            success_results['sheet9'] = _create_system_alerts_sheet(wb, results) # <-- ADD THIS LINE
             
             # Check if any sheet creation failed
             failed_sheets = [k for k, v in success_results.items() if not v]
